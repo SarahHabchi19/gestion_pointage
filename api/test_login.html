@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test Login</title>
+</head>
+<body>
+  <button onclick="testerLogin()">Tester le login</button>
+  <pre id="resultat"></pre>
+
+  <script>
+    function testerLogin() {
+      fetch('login.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          login: prompt('Nom d’utilisateur de test :') || '',
+          mot_de_passe: prompt('Mot de passe de test :') || ''
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('resultat').textContent = JSON.stringify(data, null, 2);
+      })
+      .catch(error => {
+        document.getElementById('resultat').textContent = 'Erreur: ' + error;
+      });
+    }
+  </script>
+</body>
+</html>

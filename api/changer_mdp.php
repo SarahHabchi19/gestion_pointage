@@ -1,0 +1,22 @@
+<?php
+require_once __DIR__ . '/bootstrap.php';
+require_method('PUT');
+$sessionUser = require_auth();
+$data = json_input();
+$ancien = $data['ancien_mot_de_passe'] ?? '';
+$nouveau = $data['nouveau_mot_de_passe'] ?? '';
+if (!valid_password($nouveau)) respond(['erreur' => 'Le nouveau mot de passe doit contenir au moins 8 caractères, une lettre, un chiffre et un symbole.'], 422);
+if ($ancien === $nouveau) respond(['erreur' => 'Le nouveau mot de passe doit être différent de l’ancien.'], 422);
+global $conn;
+$stmt = $conn->prepare('SELECT mot_de_passe FROM utilisateur WHERE id_utilisateur=?');
+if (!$stmt) db_error();
+$stmt->bind_param('i', $sessionUser['id_utilisateur']);
+$stmt->execute();
+$user = $stmt->get_result()->fetch_assoc();
+if (!$user || !password_verify($ancien, $user['mot_de_passe'])) respond(['erreur' => 'Mot de passe actuel incorrect.'], 401);
+$hash = password_hash($nouveau, PASSWORD_DEFAULT);
+$update = $conn->prepare('UPDATE utilisateur SET mot_de_passe=? WHERE id_utilisateur=?');
+if (!$update) db_error();
+$update->bind_param('si', $hash, $sessionUser['id_utilisateur']);
+if (!$update->execute()) db_error();
+respond(['message' => 'Mot de passe modifié avec succès.']);

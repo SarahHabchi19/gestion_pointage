@@ -1,0 +1,3 @@
+RewriteEngine On
+RewriteBase /gestion_pointage/public/
+RewriteRule ^(index|dashboard|admin|rapports|settings)\.html$ inject.php [L,QSA]

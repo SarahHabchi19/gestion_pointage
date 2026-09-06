@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test Add Agent</title>
+</head>
+<body>
+  <button onclick="testerAddAgent()">Tester add_agent</button>
+  <pre id="resultat"></pre>
+
+  <script>
+    function testerAddAgent() {
+      fetch('add_agent.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mat: '31544433',
+          nom: 'Yahaoui',
+          prenom: 'Karima',
+          email: 'karima.yahaoui@gmail.com',
+          telephone: '+213555999888',
+          code_str: 'SEC'
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('resultat').textContent = JSON.stringify(data, null, 2);
+      })
+      .catch(error => {
+        document.getElementById('resultat').textContent = 'Erreur: ' + error;
+      });
+    }
+  </script>
+</body>
+</html>
