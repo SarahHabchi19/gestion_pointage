@@ -272,6 +272,47 @@
         renderTable(allRows);
       });
     }
+
+    // Les scripts intégrés aux pages sont volontairement retirés par inject.php.
+    // On initialise donc aussi la cloche ici, dans le script principal chargé par WAMP.
+    var notificationButton = document.getElementById('notificationButton');
+    var notificationPanel = document.getElementById('notificationPanel');
+    var notificationCount = document.getElementById('notificationCount');
+    var notificationPing = document.getElementById('notificationPing');
+    if (notificationButton && notificationPanel) {
+      function refreshNotificationState() {
+        var unread = notificationPanel.querySelectorAll('.notif-item.unread').length;
+        if (notificationCount) notificationCount.textContent = unread ? (unread + ' nouvelle' + (unread > 1 ? 's' : '')) : 'À jour';
+        if (notificationPing) notificationPing.style.display = unread ? '' : 'none';
+      }
+      function closeNotifications() {
+        notificationPanel.classList.remove('open');
+        notificationButton.setAttribute('aria-expanded', 'false');
+      }
+      notificationButton.addEventListener('click', function (event) {
+        event.stopPropagation();
+        var isOpen = notificationPanel.classList.toggle('open');
+        notificationButton.setAttribute('aria-expanded', String(isOpen));
+      });
+      var markAllRead = document.getElementById('markAllRead');
+      if (markAllRead) markAllRead.addEventListener('click', function () {
+        notificationPanel.querySelectorAll('.notif-item.unread').forEach(function (item) { item.classList.remove('unread'); });
+        refreshNotificationState();
+      });
+      notificationPanel.querySelectorAll('.notif-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+          item.classList.remove('unread');
+          refreshNotificationState();
+        });
+      });
+      document.addEventListener('click', function (event) {
+        if (!event.target.closest('.notifications-wrap')) closeNotifications();
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeNotifications();
+      });
+      refreshNotificationState();
+    }
   }
 
   async function initAdmin() {
@@ -660,6 +701,88 @@
       render();
     }
 
+    // Génère un vrai fichier PDF et le télécharge directement dans le navigateur.
+    // Cette version ne dépend d'aucune bibliothèque externe : elle reste donc utilisable
+    // même lorsque le projet est ouvert sans connexion Internet.
+    function downloadReportPdf() {
+      function pdfText(value) {
+        return String(value == null ? '' : value)
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[–—]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'")
+          .replace(/[^\x20-\x7E]/g, ' ')
+          .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+      }
+      function cell(value, width) {
+        var text = pdfText(value);
+        return text.length > width ? text.slice(0, Math.max(0, width - 3)) + '...' : text;
+      }
+      function stream(lines) {
+        return 'BT\n/F1 9 Tf\n' + lines.map(function (line) {
+          return '1 0 0 1 ' + line.x + ' ' + line.y + ' Tm\n(' + pdfText(line.text) + ') Tj';
+        }).join('\n') + '\nET';
+      }
+
+      var perPdfPage = 34;
+      var pages = [];
+      var rows = allRows.length ? allRows : [];
+      var pageCount = Math.max(1, Math.ceil(rows.length / perPdfPage));
+      for (var page = 0; page < pageCount; page++) {
+        var lines = [
+          { x: 42, y: 802, text: 'SONATRACH - Rapport de presence' },
+          { x: 42, y: 784, text: 'Genere le ' + new Date().toLocaleDateString('fr-FR') },
+          { x: 42, y: 762, text: 'Matricule       Nom et prenom                 Departement          Entree  Sortie  Statut' },
+          { x: 42, y: 756, text: '________________________________________________________________________________' }
+        ];
+        rows.slice(page * perPdfPage, (page + 1) * perPdfPage).forEach(function (r, index) {
+          var y = 738 - index * 20;
+          var text = cell(r.mat, 14).padEnd(16) +
+            cell(fullName(r), 28).padEnd(30) +
+            cell(r.structure || '', 18).padEnd(20) +
+            cell(fmtTime(r.heure_entree), 7).padEnd(8) +
+            cell(fmtTime(r.heure_sortie), 7).padEnd(8) +
+            cell(mapStatus(r.situation), 16);
+          lines.push({ x: 42, y: y, text: text });
+        });
+        lines.push({ x: 42, y: 35, text: 'Page ' + (page + 1) + ' / ' + pageCount + '    Total: ' + rows.length });
+        pages.push(stream(lines));
+      }
+
+      var objects = [];
+      var pageRefs = [];
+      var firstPageObject = 3;
+      for (var p = 0; p < pages.length; p++) pageRefs.push((firstPageObject + p * 2) + ' 0 R');
+      objects.push('<< /Type /Catalog /Pages 2 0 R >>');
+      objects.push('<< /Type /Pages /Kids [' + pageRefs.join(' ') + '] /Count ' + pages.length + ' >>');
+      pages.forEach(function (content, index) {
+        var pageObject = firstPageObject + index * 2;
+        var contentObject = pageObject + 1;
+        objects.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ' + contentObject + ' 0 R >>');
+        objects.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+      });
+      var pdf = '%PDF-1.4\n';
+      var offsets = [0];
+      objects.forEach(function (object, index) {
+        offsets.push(pdf.length);
+        pdf += (index + 1) + ' 0 obj\n' + object + '\nendobj\n';
+      });
+      var xref = pdf.length;
+      pdf += 'xref\n0 ' + (objects.length + 1) + '\n0000000000 65535 f \n';
+      offsets.slice(1).forEach(function (offset) {
+        pdf += String(offset).padStart(10, '0') + ' 00000 n \n';
+      });
+      pdf += 'trailer\n<< /Size ' + (objects.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+
+      var blob = new Blob([pdf], { type: 'application/pdf' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'rapport-presence-' + todayISO() + '.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
     document.querySelector('.btn-generate').addEventListener('click', function () {
       generate().catch(function (err) { alert(err.message); });
     });
@@ -679,7 +802,7 @@
     });
     document.querySelectorAll('.top-actions .btn').forEach(function (btn) {
       if (btn.textContent.indexOf('Imprimer') !== -1) btn.addEventListener('click', function () { window.print(); });
-      if (btn.textContent.indexOf('PDF') !== -1) btn.addEventListener('click', function () { window.print(); });
+      if (btn.textContent.indexOf('PDF') !== -1) btn.addEventListener('click', downloadReportPdf);
     });
     await generate();
   }

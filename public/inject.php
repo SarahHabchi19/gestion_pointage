@@ -12,6 +12,7 @@ if (!is_file($file)) {
 }
 $html = file_get_contents($file);
 $html = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $html);
-$html = str_ireplace('</body>', "<script src=\"js/app.js\"></script>\n</body>", $html);
+$appVersion = filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'app.js') ?: time();
+$html = str_ireplace('</body>', "<script src=\"js/app.js?v={$appVersion}\"></script>\n</body>", $html);
 header('Content-Type: text/html; charset=utf-8');
 echo $html;
